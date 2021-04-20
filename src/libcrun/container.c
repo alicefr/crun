@@ -744,13 +744,14 @@ libkrun_do_exec (void *container, void *arg, const char *pathname, char *const a
   runtime_spec_schema_config_schema *def = ((libcrun_container_t *) container)->container_def;
   int32_t (*krun_create_ctx) ();
   int (*krun_start_enter) (uint32_t ctx_id);
-  int32_t (*krun_set_vm_config) (uint32_t ctx_id, uint8_t num_vcpus, uint32_t ram_mib);
+  int32_t (*krun_set_vm_config) (uint32_t ctx_id, uint8_t num_vcpus, uint32_t ram_mib, uint32_t flags);
   int32_t (*krun_set_root) (uint32_t ctx_id, const char *root_path);
   int32_t (*krun_set_workdir) (uint32_t ctx_id, const char *workdir_path);
   int32_t (*krun_set_exec) (uint32_t ctx_id, const char *exec_path, char *const argv[], char *const envp[]);
   void *handle = arg;
   uint32_t num_vcpus, ram_mib;
   int32_t ctx_id, ret;
+  uint32_t sev = ((libcrun_container_t *) container)->sev;
   cpu_set_t set;
 
   krun_create_ctx = dlsym (handle, "krun_create_ctx");
@@ -784,7 +785,7 @@ libkrun_do_exec (void *container, void *arg, const char *pathname, char *const a
   if (UNLIKELY (ctx_id < 0))
     error (EXIT_FAILURE, -ret, "could not create krun context");
 
-  ret = krun_set_vm_config (ctx_id, num_vcpus, ram_mib);
+  ret = krun_set_vm_config (ctx_id, num_vcpus, ram_mib, sev);
   if (UNLIKELY (ret < 0))
     error (EXIT_FAILURE, -ret, "could not set krun vm configuration");
 
@@ -818,7 +819,7 @@ libcrun_configure_libkrun (struct container_entrypoint_s *args, libcrun_error_t 
   handle = dlopen ("libkrun.so", RTLD_NOW);
   if (handle == NULL)
     return crun_make_error (err, 0, "could not load `libkrun.so`: %s", dlerror ());
-
+  printf("setup libkrun_do_exec \n");
   args->exec_func = libkrun_do_exec;
   args->exec_func_arg = handle;
 
@@ -839,8 +840,15 @@ libcrun_configure_handler (struct container_entrypoint_s *args, libcrun_error_t 
   if (annotation == NULL)
     return 0;
 
+  if (strcmp (annotation, "krun-sev") == 0)
+  {
+    args->container->sev = 1;
+    return libcrun_configure_libkrun (args, err);
+  }
+
   if (strcmp (annotation, "krun") == 0)
     return libcrun_configure_libkrun (args, err);
+
 
   return crun_make_error (err, EINVAL, "invalid handler specified `%s`", annotation);
 }
